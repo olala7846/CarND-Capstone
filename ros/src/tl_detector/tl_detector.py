@@ -142,10 +142,15 @@ class TLDetector(object):
         trans = None
         try:
             now = rospy.Time.now()
-            self.listener.waitForTransform("/base_link",
-                  "/world", now, rospy.Duration(1.0))
-            (trans, rot) = self.listener.lookupTransform("/base_link",
-                  "/world", now)
+            self.listener.waitForTransform("/world", "/base_link", now, rospy.Duration(1.0))
+            tl_point = PointStamped()
+            tl_point.header.frame_id = "/world"
+            tl_point.header.stamp = now
+            tl_point.point.x = point_in_world.x
+            tl_point.point.y = point_in_world.y
+            tl_point.point.z = point_in_world.z
+
+            tl_point = self.listener.transformPoint("/base_link", tl_point)
 
         except (tf.Exception, tf.LookupException, tf.ConnectivityException):
             rospy.logerr("Failed to find camera to map transform")
