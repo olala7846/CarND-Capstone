@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Int32
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, PointStamped
 from styx_msgs.msg import TrafficLightArray, TrafficLight
 from styx_msgs.msg import Lane
 from sensor_msgs.msg import Image
@@ -11,6 +11,7 @@ import tf
 import cv2
 import yaml
 import math
+import numpy as np
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -156,9 +157,13 @@ class TLDetector(object):
             rospy.logerr("Failed to find camera to map transform")
 
         #TODO Use tranform and rotation to calculate 2D position of light in image
-
-        x = 0
-        y = 0
+        cameraMatrix = np.array([[fx, 0,  math.floor(image_width/2) ],
+                                 [0,  fy, math.floor(image_height/2)],
+                                 [0,  0,  1                         ]])
+        objectPoints = np.array([tl_point.point.x, tl_point.point.y, tl_point.point.z])
+        imagePoints = cameraMatrix.dot(objectPoints)
+        x = imagePoints[0]
+        y = imagePoints[1]
 
         return (x, y)
 
@@ -176,12 +181,18 @@ class TLDetector(object):
         # Fake light detection with ground truth
         if not self.lights:
             return TrafficLight.UNKNOWN
+
         light_index = self.get_closest_waypoint(light.pose)
+
         for light_3d in self.lights:
             light_3d_index = self.get_closest_waypoint(light_3d.pose.pose)
+
             if abs(light_index - light_3d_index) < 50:
+                x, y = self.project_to_image_plane(light.pose.position)
+                rospy.loginfo("light image loc: {}, {}".format(x, y))
                 return light_3d.state
-        return TrafficLight.UNKNOWN
+
+            return TrafficLight.UNKNOWN
         # End of fake light detection
 
         if(not self.has_image):
@@ -189,8 +200,6 @@ class TLDetector(object):
             return False
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-
-        x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
 
@@ -257,7 +266,8 @@ class TLDetector(object):
 
         if light:
             state = self.get_light_state(light)
-            rospy.loginfo('light color ahead %s' % state)
+            if state != TrafficLight.UNKNOWN:
+                rospy.loginfo('light color ahead %s' % state)
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN
