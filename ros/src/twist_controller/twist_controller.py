@@ -21,20 +21,20 @@ class TwistController(object):
         self.max_steer_angle = max_steer_angle
         
         #PID gain for throttle control
-        self.kp = 1
+        self.kp = .7
         self.kd = 1
         self.ki = 0.1
         
         #PID gain for brake control        
-        self.kp_brake = 1
-        self.kd_brake = 1
-        self.ki_brake = 0.1
+        self.kp_brake = 100
+        self.kd_brake = 10
+        self.ki_brake = 10
         
         self.min_speed = 0.0
         
-        self.pid_controller = PID(self.kp, self.ki, self.kd, 0, self.accel_limit)
+        self.pid_controller = PID(self.kp, self.ki, self.kd, -1e9, 1e9)
         
-        self.brake_controller = PID(self.kp_brake, self.ki_brake, self.kd_brake, 0, self.decel_limit)
+        self.brake_controller = PID(self.kp_brake, self.ki_brake, self.kd_brake, -1e9, 1e9)
         
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio, self.min_speed, self.max_lat_accel, self.max_steer_angle)
 

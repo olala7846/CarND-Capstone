@@ -42,10 +42,11 @@ class WaypointUpdater(object):
 
         # Add other member variables you need below
         self.base_lane = None
-        self.traffic_wp = None
+        self.traffic_wp = -1
         self.obstacle_wp = None
         self.seqnum = 0
         self.wp_start_q = -1
+        self.traffic_change = False
 
         rospy.spin()
 
@@ -86,8 +87,8 @@ class WaypointUpdater(object):
                         theta = math.atan2(wp_y - veh_y, wp_x - veh_x)
                         # make sure the waypoint is in front of the car
                         if abs(angles.shortest_angular_distance(theta, veh_yaw)) < math.pi/4.0:
-                            rospy.loginfo("wp_x %f wp_y %f veh_x %f veh_y %f dist %f theta %f yaw %f",
-                                          wp_x, wp_y, veh_x, veh_y, veh_to_wp_dist, theta, veh_yaw)
+                            #rospy.loginfo("wp_x %f wp_y %f veh_x %f veh_y %f dist %f theta %f yaw %f",
+                            #              wp_x, wp_y, veh_x, veh_y, veh_to_wp_dist, theta, veh_yaw)
                             min_dist = veh_to_wp_dist
                             wp_start = wp_idx
                             # we should be able to stop iterating because the next waypoint should be in front
@@ -97,12 +98,21 @@ class WaypointUpdater(object):
             if wp_start >= 0:
                 for wp_idx in range(LOOKAHEAD_WPS):
                     idx = (wp_start + wp_idx) % len(self.base_lane.waypoints)
+                    # Only set the deacceleration once
+                    if self.traffic_change:
+                        velocity = 20.0
+
+                        if self.traffic_wp >= 0:
+                            velocity = max(20.0 - wp_idx*(20.0/(self.traffic_wp - wp_start)), 0.0)
+
+                        self.set_waypoint_velocity(self.base_lane.waypoints, idx, velocity)
+
                     pub_waypoints.append(self.base_lane.waypoints[idx])
+
+                self.traffic_change = False
+
                 self.wp_start_q = wp_start
-                # Add velocity command to waypoints
-                # TESTING
-                for wp_cnt in range(len(pub_waypoints)):
-                    self.set_waypoint_velocity(pub_waypoints, wp_cnt, 20.0)
+
                 l = Lane()
                 l.header.seq = self.seqnum
                 self.seqnum = self.seqnum + 1
@@ -110,26 +120,24 @@ class WaypointUpdater(object):
                 l.waypoints = pub_waypoints
                 self.final_waypoints_pub.publish(l)
                             
-            rospy.loginfo("wp_start %d min_dist %f wp.x %f pose.x %f veh_yaw %f wp_cnt %d",
-                          wp_start, min_dist, self.base_lane.waypoints[wp_start].pose.pose.position.x,
-                          msg.pose.position.x, veh_yaw, wp_cnt)
-
-        pass
+#            rospy.loginfo("wp_start %d min_dist %f wp.x %f pose.x %f veh_yaw %f",
+ #                         wp_start, min_dist, self.base_lane.waypoints[wp_start].pose.pose.position.x,
+  #                        msg.pose.position.x, veh_yaw)
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
+        # Callback for /waypoints message.
         self.base_lane = waypoints
-        pass
+        for idx in range(len(self.base_lane.waypoints)):
+            self.set_waypoint_velocity(self.base_lane.waypoints, idx, 20.0)
 
     def traffic_cb(self, msg):
         # Callback for /traffic_waypoint message.
+        self.traffic_change = self.traffic_wp != msg.data
         self.traffic_wp = msg.data
-        pass
 
     def obstacle_cb(self, msg):
         # Callback for /obstacle_waypoint message. We will implement it later
         self.obstacle_wp = msg.data
-        pass
 
     def get_waypoint_velocity(self, waypoint):
         return waypoint.twist.twist.linear.x
