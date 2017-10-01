@@ -45,7 +45,7 @@ class WaypointUpdater(object):
         self.traffic_wp = -1
         self.obstacle_wp = None
         self.seqnum = 0
-        self.wp_start_q = -1
+        self.car_wp_q = -1
         self.traffic_change = False
 
         rospy.spin()
@@ -72,13 +72,15 @@ class WaypointUpdater(object):
             pub_waypoints = []
             wp_start = -1
             min_dist = 1e9
+            dist_q = 1e9
+            state = 0  # no progress finding waypoint
             if len(self.base_lane.waypoints) > 1:
                 # find the first waypoint in front of the vehicle,
                 #   then take a sequence of LOOKAHEAD_WPS waypoints
                 for i in range(len(self.base_lane.waypoints)):
                     wp_idx = i
-                    if self.wp_start_q >= 0:
-                        wp_idx = (self.wp_start_q + i) % len(self.base_lane.waypoints)                    
+                    if self.car_wp_q >= 0:
+                        wp_idx = (self.car_wp_q + i) % len(self.base_lane.waypoints)                    
                     wp = self.base_lane.waypoints[wp_idx]
                     wp_x = wp.pose.pose.position.x
                     wp_y = wp.pose.pose.position.y
@@ -87,15 +89,19 @@ class WaypointUpdater(object):
                         theta = math.atan2(wp_y - veh_y, wp_x - veh_x)
                         # make sure the waypoint is in front of the car
                         if abs(angles.shortest_angular_distance(theta, veh_yaw)) < math.pi/4.0:
-                            #rospy.loginfo("wp_x %f wp_y %f veh_x %f veh_y %f dist %f theta %f yaw %f",
-                            #              wp_x, wp_y, veh_x, veh_y, veh_to_wp_dist, theta, veh_yaw)
+                            state = 1  # found correctly oriented waypoint
                             min_dist = veh_to_wp_dist
                             wp_start = wp_idx
                             # we should be able to stop iterating because the next waypoint should be in front
                             #   of the previous waypoint...for now, starting where we left off should at least
                             #   eliminate a lot of atan2 calls
+                    if veh_to_wp_dist > dist_q and state == 1:
+                        state = 2  # wp getting farther away from car
+                        break;
+                    dist_q = veh_to_wp_dist
 
             if wp_start >= 0:
+                self.car_wp_q = wp_start
                 for wp_idx in range(LOOKAHEAD_WPS):
                     idx = (wp_start + wp_idx) % len(self.base_lane.waypoints)
                     # Only set the deacceleration once
