@@ -170,6 +170,7 @@ class TLDetector(object):
 
         except (tf.Exception, tf.LookupException, tf.ConnectivityException):
             rospy.logerr("Failed to find camera to map transform")
+            return None
 
         objectPoints = np.array([tl_point.point.y/tl_point.point.x, tl_point.point.z/tl_point.point.x, 1.0])
 
@@ -181,7 +182,7 @@ class TLDetector(object):
             fx = -2580
             fy = -2730
             cx = 360;
-            cy = 680;
+            cy = 700;
             objectPoints[2]
         ################################################################################
 
@@ -193,6 +194,8 @@ class TLDetector(object):
         imagePoints = cameraMatrix.dot(objectPoints)
         x = int(round(imagePoints[0]) + cx)
         y = int(round(imagePoints[1]) + cy)
+        if 10 > x > image_width-10 or 10 > y > image_height-10:
+            return None
         # rospy.loginfo("objectpoints: x: {}, y: {}, z: {}".format(tl_point.point.x, tl_point.point.y, tl_point.point.z))
         return (x, y)
 
@@ -212,14 +215,40 @@ class TLDetector(object):
             return TrafficLight.UNKNOWN
 
         if light.state != TrafficLight.UNKNOWN:
-            x, y = self.project_to_image_plane(light.pose.pose.position)
-            cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-            cv2.rectangle(cv_image, (x-50, y-50), (x+50, y+50), (255, 0 , 0), 2)
-            cv2.putText(cv_image, 'x: %s, y %s' % (x, y), (100, 560), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 4)
+            xy = self.project_to_image_plane(light.pose.pose.position)
+            if xy is not None:
+                x, y = xy
+                cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+                image_width = self.config['camera_info']['image_width']
+                image_height = self.config['camera_info']['image_height']
+                crop_size = 299
+                half_crop = int(crop_size/2)
+                if x > image_width - half_crop:
+                    x_min = image_width - crop_size
+                    x_max = image_width
+                elif x < half_crop:
+                    x_min = 0
+                    x_max = crop_size
+                else:
+                    x_min = max(0, x-half_crop)
+                    x_max = min(x_min+crop_size, image_width)
 
-            filename = "light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now())
-            cv2.imwrite(filename, cv_image)
-            rospy.loginfo("light image loc: {}, {}".format(x, y))
+                if y > image_height - half_crop:
+                    y_min = image_height - crop_size
+                    y_max = image_height
+                elif y < half_crop:
+                    y_min = 0
+                    y_max = crop_size
+                else:
+                    y_min = max(0, y-half_crop)
+                    y_max = min(y_min+crop_size, image_height)
+                cropped = cv_image[y_min:y_max, x_min:x_max]
+                # cv2.rectangle(cv_image, (x-75, y-75), (x+75, y+75), (255, 0 , 0), 2)
+                # cv2.putText(cv_image, 'x: %s, y %s' % (x, y), (100, 560), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 4)
+
+                filename = "light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now())
+                cv2.imwrite(filename, cropped)
+                rospy.loginfo("light image loc: {}, {}".format(x, y))
             return light.state
 
         # End of fake light detection
