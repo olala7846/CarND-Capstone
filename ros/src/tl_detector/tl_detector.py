@@ -262,7 +262,7 @@ class TLDetector(object):
             car_pose = self.pose.pose
             closest_wp_index = self.get_closest_waypoint(car_pose)
             wp1 = waypoints[closest_wp_index]
-            wp2 = waypoints[closest_wp_index + 1 % wp_length]
+            wp2 = waypoints[(closest_wp_index + 1) % wp_length]
             fwd_angle = math.atan2(wp2.pose.pose.position.y - wp1.pose.pose.position.y,
                                    wp2.pose.pose.position.x - wp1.pose.pose.position.x)
 

@@ -108,7 +108,7 @@ class WaypointUpdater(object):
                     if self.traffic_change:
                         velocity = 20.0
 
-                        if self.traffic_wp >= 0:
+                        if self.traffic_wp > wp_start:
                             velocity = max(20.0 - wp_idx*(20.0/(self.traffic_wp - wp_start)), 0.0)
 
                         self.set_waypoint_velocity(self.base_lane.waypoints, idx, velocity)
