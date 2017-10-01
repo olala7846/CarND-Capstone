@@ -26,15 +26,18 @@ class TwistController(object):
         self.ki = 0.1
         
         #PID gain for brake control        
-        self.kp_brake = 100
+        self.kp_brake = 1000
         self.kd_brake = 10
-        self.ki_brake = 10
+        self.ki_brake = 100
         
         self.min_speed = 0.0
         
-        self.pid_controller = PID(self.kp, self.ki, self.kd, -1e9, 1e9)
+        self.pid_controller = PID(self.kp, self.ki, self.kd, 0.0, 1.0)
+
+        # Braking F = ma --> 10m/s**2 max a
+        nm_max = 10.0 * self.vehicle_mass
         
-        self.brake_controller = PID(self.kp_brake, self.ki_brake, self.kd_brake, -1e9, 1e9)
+        self.brake_controller = PID(self.kp_brake, self.ki_brake, self.kd_brake, 0.0, nm_max)
         
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio, self.min_speed, self.max_lat_accel, self.max_steer_angle)
 
