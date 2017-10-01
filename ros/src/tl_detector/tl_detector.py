@@ -151,6 +151,16 @@ class TLDetector(object):
         fy = self.config['camera_info']['focal_length_y']
         image_width = self.config['camera_info']['image_width']
         image_height = self.config['camera_info']['image_height']
+        cx = image_width / 2
+        cy = image_height / 2
+
+        # Override config on simulator, for more details, please reference
+        # https://discussions.udacity.com/t/focal-length-wrong/358568/22
+        if fx < 10:
+            fx = -2580
+            fy = -2730
+            cx = 370;
+            cy = 680;
 
         # get transform between pose of camera and world frame
         trans = None
@@ -173,11 +183,12 @@ class TLDetector(object):
         cameraMatrix = np.array([[fx, 0,  0],
                                  [0,  fy, 0],
                                  [0,  0,  1]])
-        objectPoints = np.array([tl_point.point.x, tl_point.point.y, tl_point.point.z])
+
+        objectPoints = np.array([tl_point.point.y/tl_point.point.x, tl_point.point.z/tl_point.point.x, 1.0])
         imagePoints = cameraMatrix.dot(objectPoints)
-        y = int(round(image_height/2 + imagePoints[0]))
-        x = int(round(image_width/2 + imagePoints[1]))
-        rospy.loginfo("objectpoints: x: {}, y: {}, z: {}".format(tl_point.point.x, tl_point.point.y, tl_point.point.z))
+        x = int(round(imagePoints[0]) + cx)
+        y = int(round(imagePoints[1]) + cy)
+        # rospy.loginfo("objectpoints: x: {}, y: {}, z: {}".format(tl_point.point.x, tl_point.point.y, tl_point.point.z))
         return (x, y)
 
     def get_light_state(self, light):
@@ -192,15 +203,17 @@ class TLDetector(object):
         """
         # TODO(Olala): return the real state
         # Fake light detection with ground truth
-        if not self.lights:
+        if not light:
             return TrafficLight.UNKNOWN
 
         if light.state != TrafficLight.UNKNOWN:
             x, y = self.project_to_image_plane(light.pose.pose.position)
             cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
             cv2.rectangle(cv_image, (x-50, y-50), (x+50, y+50), (255, 0 , 0), 2)
+            cv2.putText(cv_image, 'x: %s, y %s' % (x, y), (100, 560), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 4)
+
             filename = "light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now())
-            # cv2.imwrite(filename, cv_image)
+            cv2.imwrite(filename, cv_image)
             rospy.loginfo("light image loc: {}, {}".format(x, y))
             return light.state
 
