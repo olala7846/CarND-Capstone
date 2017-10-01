@@ -12,6 +12,7 @@ import cv2
 import yaml
 import math
 import numpy as np
+import os
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -169,14 +170,14 @@ class TLDetector(object):
             rospy.logerr("Failed to find camera to map transform")
 
         # TODO This can be a class member
-        cameraMatrix = np.array([[fx, 0,  math.floor(image_width/2) ],
-                                 [0,  fy, math.floor(image_height/2)],
-                                 [0,  0,  1                         ]])
+        cameraMatrix = np.array([[fx, 0,  0],
+                                 [0,  fy, 0],
+                                 [0,  0,  1]])
         objectPoints = np.array([tl_point.point.x, tl_point.point.y, tl_point.point.z])
         imagePoints = cameraMatrix.dot(objectPoints)
-        x = imagePoints[0]
-        y = imagePoints[1]
-
+        y = int(round(image_height/2 + imagePoints[0]))
+        x = int(round(image_width/2 + imagePoints[1]))
+        rospy.loginfo("objectpoints: x: {}, y: {}, z: {}".format(tl_point.point.x, tl_point.point.y, tl_point.point.z))
         return (x, y)
 
     def get_light_state(self, light):
@@ -196,7 +197,11 @@ class TLDetector(object):
 
         if light.state != TrafficLight.UNKNOWN:
             x, y = self.project_to_image_plane(light.pose.pose.position)
-#            rospy.loginfo("light image loc: {}, {}".format(x, y))
+            cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+            cv2.rectangle(cv_image, (x-50, y-50), (x+50, y+50), (255, 0 , 0), 2)
+            filename = "light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now())
+            # cv2.imwrite(filename, cv_image)
+            rospy.loginfo("light image loc: {}, {}".format(x, y))
             return light.state
 
         # End of fake light detection
@@ -205,7 +210,6 @@ class TLDetector(object):
             self.prev_light_loc = None
             return False
 
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
         #TODO use light location to zoom in on traffic light in image
 
