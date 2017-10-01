@@ -154,14 +154,6 @@ class TLDetector(object):
         cx = image_width / 2
         cy = image_height / 2
 
-        # Override config on simulator, for more details, please reference
-        # https://discussions.udacity.com/t/focal-length-wrong/358568/22
-        if fx < 10:
-            fx = -2580
-            fy = -2730
-            cx = 370;
-            cy = 680;
-
         # get transform between pose of camera and world frame
         trans = None
         try:
@@ -179,12 +171,25 @@ class TLDetector(object):
         except (tf.Exception, tf.LookupException, tf.ConnectivityException):
             rospy.logerr("Failed to find camera to map transform")
 
+        objectPoints = np.array([tl_point.point.y/tl_point.point.x, tl_point.point.z/tl_point.point.x, 1.0])
+
+        ################################################################################
+        # Manually tune focal length and camera coordinate for simulator
+        #   for more details about this issue, please reference
+        #   https://discussions.udacity.com/t/focal-length-wrong/358568/22
+        if fx < 10:
+            fx = -2580
+            fy = -2730
+            cx = 360;
+            cy = 680;
+            objectPoints[2]
+        ################################################################################
+
         # TODO This can be a class member
         cameraMatrix = np.array([[fx, 0,  0],
                                  [0,  fy, 0],
                                  [0,  0,  1]])
 
-        objectPoints = np.array([tl_point.point.y/tl_point.point.x, tl_point.point.z/tl_point.point.x, 1.0])
         imagePoints = cameraMatrix.dot(objectPoints)
         x = int(round(imagePoints[0]) + cx)
         y = int(round(imagePoints[1]) + cy)
