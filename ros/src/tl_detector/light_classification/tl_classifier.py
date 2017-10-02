@@ -5,32 +5,35 @@ from keras.models import Model
 from keras.models import model_from_json
 from keras import backend as K
 from keras.callbacks import ModelCheckpoint
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.layers import Dense, GlobalAveragePooling2D
 
 import csv
+import cv2
 import random
 import numpy as np
 
 import shutil
 import os
 
+import tensorflow as tf
+
 IMG_HEIGHT = 299
 IMG_WIDTH = 299
 
 class TLClassifier(object):
     def __init__(self):
-        model_filename = 'model.json'
-        if os.path.isfile(model_filename):
-            with open(model_filename, 'r') as jfile:
-                model = model_from_json(jfile.read())
+        self.model = None
 
-            model.compile("adam", "mse")
-            weights_file = model_filename.replace('json', 'h5')
-            if os.path.isfile(weights_file):
-                model.load_weights(weights_file)
+        if os.path.isfile('model.h5'):
+            self.model = load_model('model.h5')
+            self.model._make_predict_function()
+            self.graph = tf.get_default_graph()
+        else:
+            print("Could not load model.json")
+
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -42,7 +45,15 @@ class TLClassifier(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        #TODO implement light color prediction
+        if self.model is not None:
+            datagen = ImageDataGenerator(rescale=1. / 255,)
+            im = datagen.standardize(image.astype('float32'))
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            im_array = np.asarray(im)
+            transformed_im_array = im_array[None, :, :, :]
+            with self.graph.as_default():
+                preds = self.model.predict(transformed_im_array, batch_size=1)
+                return np.argmax(preds[0])
         return TrafficLight.UNKNOWN
 
     def create_data(self):
@@ -54,11 +65,14 @@ class TLClassifier(object):
             category = int(row[1])
             datapoint = {'img': row[0], 'cat': category}
             data[category].append(datapoint)
-        min_rows = min(len(data[0]), min(len(data[2]), len(data[1])))
-        print(min_rows)
+
+        # keep the number of green and red lights the same, care less about yellows
+        green_rows = len(data[2])
+
         final_data = []
         for idx in range(3):
             random.shuffle(data[idx])
+            min_rows = min(len(data[idx]), green_rows)
             data[idx] = data[idx][:min_rows]
             final_data.extend(data[idx])
         random.shuffle(final_data)
@@ -83,9 +97,9 @@ class TLClassifier(object):
 
     def train(self):
         if K.image_data_format() == 'channels_first':
-            input_shape = (3, 256, 256)
+            input_shape = (3, IMG_WIDTH, IMG_HEIGHT)
         else:
-            input_shape = (256, 256, 3)
+            input_shape = (IMG_WIDTH, IMG_HEIGHT, 3)
         model = Sequential()
         model.add(Conv2D(32, (3, 3), input_shape=input_shape))
         model.add(Activation('relu'))
@@ -109,26 +123,25 @@ class TLClassifier(object):
         model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
         train_samples, valid_samples = self.create_data()
+        print('{} training, {} validation samples'.format(train_samples, valid_samples))
 
         train_datagen = ImageDataGenerator(
             rescale=1. / 255,
             horizontal_flip=True)
         test_datagen = ImageDataGenerator(rescale=1. / 255,)
 
-        batch_size = 32
+        batch_size = 16
         train_generator = train_datagen.flow_from_directory(
             'src/tl_detector/light_classification/train',
+            target_size=(IMG_WIDTH, IMG_HEIGHT),
             batch_size=batch_size,
             class_mode='categorical')
 
         validation_generator = test_datagen.flow_from_directory(
             'src/tl_detector/light_classification/valid',
+            target_size=(IMG_WIDTH, IMG_HEIGHT),
             batch_size=batch_size,
             class_mode='categorical')
-
-        json_string = model.to_json()
-        with open('model.json', mode='w') as outfile:
-            outfile.write(json_string)
 
         model.fit_generator(
             train_generator,
@@ -138,9 +151,9 @@ class TLClassifier(object):
             validation_steps=int(valid_samples/batch_size),
             callbacks=[
                 ModelCheckpoint(
-                    'model.h5',
+                    'src/tl_detector/model.h5',
                     verbose=2,
-                    save_weights_only=True,
+                    save_weights_only=False,
                     save_best_only=True
                 )
             ])

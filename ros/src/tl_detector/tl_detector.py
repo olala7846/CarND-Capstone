@@ -46,17 +46,13 @@ class TLDetector(object):
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
         self.listener = tf.TransformListener()
+        self.light_classifier = TLClassifier()
 
         self.state = TrafficLight.UNKNOWN
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
-
-        # reset the images index
-        if os.path.isfile("light_classification/images.csv"):
-            os.remove("light_classification/images.csv")
 
         rospy.spin()
 
@@ -219,57 +215,56 @@ class TLDetector(object):
         if not light:
             return TrafficLight.UNKNOWN
 
-        if light.state != TrafficLight.UNKNOWN:
-            xy = self.project_to_image_plane(light.pose.pose.position)
-            if xy is not None:
-                x, y = xy
-                cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-                image_width = self.config['camera_info']['image_width']
-                image_height = self.config['camera_info']['image_height']
-                crop_size = 299
-                half_crop = int(crop_size/2)
-                if x > image_width - half_crop:
-                    x_min = image_width - crop_size
-                    x_max = image_width
-                elif x < half_crop:
-                    x_min = 0
-                    x_max = crop_size
-                else:
-                    x_min = max(0, x-half_crop)
-                    x_max = min(x_min+crop_size, image_width)
-
-                if y > image_height - half_crop:
-                    y_min = image_height - crop_size
-                    y_max = image_height
-                elif y < half_crop:
-                    y_min = 0
-                    y_max = crop_size
-                else:
-                    y_min = max(0, y-half_crop)
-                    y_max = min(y_min+crop_size, image_height)
-                cropped = cv_image[y_min:y_max, x_min:x_max]
-                # cv2.rectangle(cv_image, (x-75, y-75), (x+75, y+75), (255, 0 , 0), 2)
-                # cv2.putText(cv_image, 'x: %s, y %s' % (x, y), (100, 560), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 4)
-
-                filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
-                with open("light_classification/images.csv", "a") as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow([filename, light.state])
-                cv2.imwrite(filename, cropped)
-                rospy.loginfo("light image loc: {}, {}".format(x, y))
-            return light.state
-
-        # End of fake light detection
-
-        if(not self.has_image):
+        if not self.has_image:
             self.prev_light_loc = None
             return False
 
+        xy = self.project_to_image_plane(light.pose.pose.position)
+        if xy is None:
+            return None
+        x, y = xy
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
-        #TODO use light location to zoom in on traffic light in image
+        image_width = self.config['camera_info']['image_width']
+        image_height = self.config['camera_info']['image_height']
+        crop_size = 299
+        half_crop = int(crop_size/2)
+        if x > image_width - half_crop:
+            x_min = image_width - crop_size
+            x_max = image_width
+        elif x < half_crop:
+            x_min = 0
+            x_max = crop_size
+        else:
+            x_min = max(0, x-half_crop)
+            x_max = min(x_min+crop_size, image_width)
 
-        #Get classification
-        return self.light_classifier.get_classification(cv_image)
+        if y > image_height - half_crop:
+            y_min = image_height - crop_size
+            y_max = image_height
+        elif y < half_crop:
+            y_min = 0
+            y_max = crop_size
+        else:
+            y_min = max(0, y-half_crop)
+            y_max = min(y_min+crop_size, image_height)
+
+        cropped = cv_image[y_min:y_max, x_min:x_max]
+        pred = self.light_classifier.get_classification(cropped)
+        rospy.loginfo("Predicted: {}".format(pred))
+
+
+        if light.state != TrafficLight.UNKNOWN:
+            # Ground truth is known, use it to create training data
+            filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
+            with open("light_classification/images.csv", "a") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow([filename, light.state])
+            cv2.imwrite(filename, cropped)
+            rospy.loginfo("light image loc: {}, {}".format(x, y))
+            rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
+
+        return pred
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -327,7 +322,6 @@ class TLDetector(object):
             state = TrafficLight.UNKNOWN
             if abs(light_wp - closest_wp_index) < 200:
                 state = self.get_light_state(light)
-                rospy.loginfo('light color ahead %s' % state)
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN
