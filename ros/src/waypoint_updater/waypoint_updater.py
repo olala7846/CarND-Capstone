@@ -102,7 +102,6 @@ class WaypointUpdater(object):
                     dist_q = veh_to_wp_dist
 
             if wp_start >= 0:
-                self.car_wp_q = wp_start
                 braking_range = 100.0  # m to stop the car
                 vstep = 0.0
                 if self.traffic_wp >= 0:
@@ -124,25 +123,29 @@ class WaypointUpdater(object):
                 process_traffic = (self.traffic_wp < 0) or traffic_wp_valid
                 rospy.loginfo("Car wp: %d traffic_wp: %d last_processed: %d process %s",
                               wp_start, self.traffic_wp, self.last_traffic_wp_processed, process_traffic)
+                traffic_wp_idx = (self.traffic_wp - wp_start) % len(self.base_lane.waypoints)
+                if process_traffic and traffic_wp_valid:
+                    rospy.loginfo("Process traffic_wp %d", self.traffic_wp)
                 for wp_idx in range(LOOKAHEAD_WPS):
                     idx = (wp_start + wp_idx) % len(self.base_lane.waypoints)
                     # Only set the deacceleration once
                     if process_traffic:
                         velocity = self.target_velocity
 
-                        if traffic_wp_valid and idx <= self.traffic_wp:
+                        if traffic_wp_valid and wp_idx <= traffic_wp_idx:
                             dist_traffic = self.distance(self.base_lane.waypoints, idx, self.traffic_wp)
                             if dist_traffic <= braking_range:
                                 velocity = min(self.target_velocity, vstep * dist_traffic)
 
                         self.set_waypoint_velocity(self.base_lane.waypoints, idx, velocity)
-                        # let last processed go to -1 in case we detect red - green - red on the same signal
-                        # since -1 overwrites the velocity, we have to repeat the deceleration
-                        self.last_traffic_wp_processed = self.traffic_wp
 
                     pub_waypoints.append(self.base_lane.waypoints[idx])
 
-                self.wp_start_q = wp_start
+                if process_traffic:
+                    # let last processed go to -1 in case we detect red - green - red on the same signal
+                    # since -1 overwrites the velocity, we have to repeat the deceleration
+                    self.last_traffic_wp_processed = self.traffic_wp
+                self.car_wp_q = wp_start
 
                 l = Lane()
                 l.header.seq = self.seqnum
