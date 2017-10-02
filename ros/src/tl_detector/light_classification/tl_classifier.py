@@ -10,7 +10,6 @@ from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.layers import Dense, GlobalAveragePooling2D
 
-import csv
 import cv2
 import random
 import numpy as np
@@ -57,14 +56,14 @@ class TLClassifier(object):
         return TrafficLight.UNKNOWN
 
     def create_data(self):
-        with open("src/tl_detector/light_classification/images.csv") as f:
-            reader = csv.reader(f)
-            rows = list(reader)
+        files = os.listdir('src/tl_detector/light_classification/training_data')
         data = [[], [], []]
-        for row in rows:
-            category = int(row[1])
-            datapoint = {'img': row[0], 'cat': category}
-            data[category].append(datapoint)
+        for f in files:
+            if f.endswith('.jpg'):
+                row = f.split('-')
+                category = int(row[0])
+                datapoint = {'img': 'src/tl_detector/light_classification/training_data/'+f, 'cat': category}
+                data[category].append(datapoint)
 
         # keep the number of green and red lights the same, care less about yellows
         green_rows = len(data[2])

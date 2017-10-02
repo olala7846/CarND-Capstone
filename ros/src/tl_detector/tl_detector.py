@@ -13,7 +13,6 @@ import yaml
 import math
 import numpy as np
 import os
-import csv
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -63,7 +62,6 @@ class TLDetector(object):
         self.pose = msg
 
     def car_moved(self):
-        rospy.loginfo('{} : {}'.format(self.prev_pose.pose.position, self.pose.pose.position))
         if self.prev_pose is None and self.pose is not None:
             return True
         if self.prev_pose.pose.position.x != self.pose.pose.position.x:
@@ -277,10 +275,7 @@ class TLDetector(object):
             if self.car_moved():
                 filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
                 rospy.loginfo("Car moved, saving new image: {}".format(filename))
-                with open("light_classification/images.csv", "a") as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow([filename, light.state])
-                    cv2.imwrite(filename, cropped)
+                cv2.imwrite(filename, cropped)
             rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
             return light.state
         return pred
