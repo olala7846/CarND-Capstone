@@ -46,7 +46,8 @@ class WaypointUpdater(object):
         self.obstacle_wp = None
         self.seqnum = 0
         self.car_wp_q = -1
-        self.traffic_change = False
+        self.target_velocity = 20.0
+        self.last_traffic_wp_processed = -1
 
         rospy.spin()
 
@@ -102,20 +103,44 @@ class WaypointUpdater(object):
 
             if wp_start >= 0:
                 self.car_wp_q = wp_start
+                braking_range = 100.0  # m to stop the car
+                vstep = 0.0
+                if self.traffic_wp >= 0:
+                    dist_traffic = min(braking_range, self.distance(self.base_lane.waypoints, wp_start, self.traffic_wp))
+                    if dist_traffic > 0:
+                        vstep = self.target_velocity / dist_traffic  # (m/s)/m deceleration
+
+                # check validity of the traffic_wp
+                new_traffic_wp = self.traffic_wp >= 0 and self.traffic_wp != self.last_traffic_wp_processed
+                traffic_wp_valid = self.traffic_wp >= wp_start and new_traffic_wp
+                if traffic_wp_valid == False and new_traffic_wp:
+                    # wraparound
+                    if (self.traffic_wp - wp_start) % len(self.base_lane.waypoints) < 100:
+                        traffic_wp_valid = True
+                
+                        
+                # RACE condition: flag may be cleared before we see it or may be cleared if thread switches
+                #   mid-loop
+                process_traffic = (self.traffic_wp < 0) or traffic_wp_valid
+                rospy.loginfo("Car wp: %d traffic_wp: %d last_processed: %d process %s",
+                              wp_start, self.traffic_wp, self.last_traffic_wp_processed, process_traffic)
                 for wp_idx in range(LOOKAHEAD_WPS):
                     idx = (wp_start + wp_idx) % len(self.base_lane.waypoints)
                     # Only set the deacceleration once
-                    if self.traffic_change:
-                        velocity = 20.0
+                    if process_traffic:
+                        velocity = self.target_velocity
 
-                        if self.traffic_wp > wp_start:
-                            velocity = max(20.0 - wp_idx*(20.0/(self.traffic_wp - wp_start)), 0.0)
+                        if traffic_wp_valid and idx <= self.traffic_wp:
+                            dist_traffic = self.distance(self.base_lane.waypoints, idx, self.traffic_wp)
+                            if dist_traffic <= braking_range:
+                                velocity = min(self.target_velocity, vstep * dist_traffic)
 
                         self.set_waypoint_velocity(self.base_lane.waypoints, idx, velocity)
+                        # let last processed go to -1 in case we detect red - green - red on the same signal
+                        # since -1 overwrites the velocity, we have to repeat the deceleration
+                        self.last_traffic_wp_processed = self.traffic_wp
 
                     pub_waypoints.append(self.base_lane.waypoints[idx])
-
-                self.traffic_change = False
 
                 self.wp_start_q = wp_start
 
@@ -134,11 +159,10 @@ class WaypointUpdater(object):
         # Callback for /waypoints message.
         self.base_lane = waypoints
         for idx in range(len(self.base_lane.waypoints)):
-            self.set_waypoint_velocity(self.base_lane.waypoints, idx, 20.0)
+            self.set_waypoint_velocity(self.base_lane.waypoints, idx, self.target_velocity)
 
     def traffic_cb(self, msg):
         # Callback for /traffic_waypoint message.
-        self.traffic_change = self.traffic_wp != msg.data
         self.traffic_wp = msg.data
 
     def obstacle_cb(self, msg):
@@ -152,11 +176,14 @@ class WaypointUpdater(object):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
     def distance(self, waypoints, wp1, wp2):
+        wp_cnt = (wp2 - wp1 + 1) % len(self.base_lane.waypoints)
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
-        for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
-            wp1 = i
+        wp_q = wp1
+        for i in range(wp_cnt):
+            idx = (wp1 + i) % len(self.base_lane.waypoints)
+            dist += dl(waypoints[wp_q].pose.pose.position, waypoints[idx].pose.pose.position)
+            wp_q = idx
         return dist
 
 
