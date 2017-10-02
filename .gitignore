@@ -6,3 +6,6 @@ devel
 profile.tmp
 training_data
 *.swp
+/ros/src/tl_detector/light_classification/images.csv
+/ros/src/tl_detector/light_classification/train/
+/ros/src/tl_detector/light_classification/valid/

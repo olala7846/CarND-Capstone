@@ -13,6 +13,7 @@ import yaml
 import math
 import numpy as np
 import os
+import csv
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -52,6 +53,10 @@ class TLDetector(object):
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
+
+        # reset the images index
+        if os.path.isfile("light_classification/images.csv"):
+            os.remove("light_classification/images.csv")
 
         rospy.spin()
 
@@ -246,7 +251,10 @@ class TLDetector(object):
                 # cv2.rectangle(cv_image, (x-75, y-75), (x+75, y+75), (255, 0 , 0), 2)
                 # cv2.putText(cv_image, 'x: %s, y %s' % (x, y), (100, 560), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 4)
 
-                filename = "light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now())
+                filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
+                with open("light_classification/images.csv", "a") as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow([filename, light.state])
                 cv2.imwrite(filename, cropped)
                 rospy.loginfo("light image loc: {}, {}".format(x, y))
             return light.state
