@@ -104,28 +104,32 @@ class WaypointUpdater(object):
             if wp_start >= 0:
                 braking_range = 100.0  # m to stop the car
                 vstep = 0.0
-                if self.traffic_wp >= 0:
-                    dist_traffic = min(braking_range, self.distance(self.base_lane.waypoints, wp_start, self.traffic_wp))
+                # register the traffic_wp in case it changes
+                #   if a new traffic_wp (W >= 0) arrives during this callback (no traffic_wp) and
+                #   is stored in last_traffic_wp_processed at end of loop then traffic_wp W will be missed
+                proc_traffic_wp = self.traffic_wp
+                if proc_traffic_wp >= 0:
+                    dist_traffic = min(braking_range, self.distance(self.base_lane.waypoints, wp_start, proc_traffic_wp))
                     if dist_traffic > 0:
                         vstep = self.target_velocity / dist_traffic  # (m/s)/m deceleration
 
                 # check validity of the traffic_wp
-                new_traffic_wp = self.traffic_wp >= 0 and self.traffic_wp != self.last_traffic_wp_processed
-                traffic_wp_valid = self.traffic_wp >= wp_start and new_traffic_wp
+                new_traffic_wp = proc_traffic_wp >= 0 and proc_traffic_wp != self.last_traffic_wp_processed
+                traffic_wp_valid = proc_traffic_wp >= wp_start and new_traffic_wp
                 if traffic_wp_valid == False and new_traffic_wp:
                     # wraparound
-                    if (self.traffic_wp - wp_start) % len(self.base_lane.waypoints) < 100:
+                    if (proc_traffic_wp - wp_start) % len(self.base_lane.waypoints) < 100:
                         traffic_wp_valid = True
                 
                         
                 # RACE condition: flag may be cleared before we see it or may be cleared if thread switches
                 #   mid-loop
-                process_traffic = (self.traffic_wp < 0) or traffic_wp_valid
+                process_traffic = (proc_traffic_wp < 0) or traffic_wp_valid
                 rospy.loginfo("Car wp: %d traffic_wp: %d last_processed: %d process %s",
-                              wp_start, self.traffic_wp, self.last_traffic_wp_processed, process_traffic)
-                traffic_wp_idx = (self.traffic_wp - wp_start) % len(self.base_lane.waypoints)
+                              wp_start, proc_traffic_wp, self.last_traffic_wp_processed, process_traffic)
+                traffic_wp_idx = (proc_traffic_wp - wp_start) % len(self.base_lane.waypoints)
                 if process_traffic and traffic_wp_valid:
-                    rospy.loginfo("Process traffic_wp %d", self.traffic_wp)
+                    rospy.loginfo("Process traffic_wp %d", proc_traffic_wp)
                 for wp_idx in range(LOOKAHEAD_WPS):
                     idx = (wp_start + wp_idx) % len(self.base_lane.waypoints)
                     # Only set the deacceleration once
@@ -133,7 +137,7 @@ class WaypointUpdater(object):
                         velocity = self.target_velocity
 
                         if traffic_wp_valid and wp_idx <= traffic_wp_idx:
-                            dist_traffic = self.distance(self.base_lane.waypoints, idx, self.traffic_wp)
+                            dist_traffic = self.distance(self.base_lane.waypoints, idx, proc_traffic_wp)
                             if dist_traffic <= braking_range:
                                 velocity = min(self.target_velocity, vstep * dist_traffic)
 
@@ -144,7 +148,7 @@ class WaypointUpdater(object):
                 if process_traffic:
                     # let last processed go to -1 in case we detect red - green - red on the same signal
                     # since -1 overwrites the velocity, we have to repeat the deceleration
-                    self.last_traffic_wp_processed = self.traffic_wp
+                    self.last_traffic_wp_processed = proc_traffic_wp
                 self.car_wp_q = wp_start
 
                 l = Lane()
