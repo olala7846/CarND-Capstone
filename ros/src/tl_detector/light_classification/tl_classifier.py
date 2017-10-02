@@ -22,13 +22,15 @@ IMG_WIDTH = 299
 
 class TLClassifier(object):
     def __init__(self):
-        if os.path.isfile('model.json'):
-            with open('model.json', 'r') as jfile:
+        model_filename = 'model.json'
+        if os.path.isfile(model_filename):
+            with open(model_filename, 'r') as jfile:
                 model = model_from_json(jfile.read())
 
             model.compile("adam", "mse")
-            weights_file = args.model.replace('json', 'h5')
-            model.load_weights(weights_file)
+            weights_file = model_filename.replace('json', 'h5')
+            if os.path.isfile(weights_file):
+                model.load_weights(weights_file)
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -77,6 +79,7 @@ class TLClassifier(object):
 
             for d in data[path]:
                 shutil.copy2(d['img'], '{}/{}/{}'.format(basepath, path, d['cat']))
+        return len(train_data), len(validation_data)
 
     def train(self):
         if K.image_data_format() == 'channels_first':
@@ -105,20 +108,22 @@ class TLClassifier(object):
 
         model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
-        self.create_data()
+        train_samples, valid_samples = self.create_data()
+
         train_datagen = ImageDataGenerator(
             rescale=1. / 255,
             horizontal_flip=True)
         test_datagen = ImageDataGenerator(rescale=1. / 255,)
 
+        batch_size = 32
         train_generator = train_datagen.flow_from_directory(
             'src/tl_detector/light_classification/train',
-            batch_size=32,
+            batch_size=batch_size,
             class_mode='categorical')
 
         validation_generator = test_datagen.flow_from_directory(
             'src/tl_detector/light_classification/valid',
-            batch_size=32,
+            batch_size=batch_size,
             class_mode='categorical')
 
         json_string = model.to_json()
@@ -127,10 +132,10 @@ class TLClassifier(object):
 
         model.fit_generator(
             train_generator,
-            steps_per_epoch=2000,
+            steps_per_epoch=int(train_samples/batch_size),
             epochs=50,
             validation_data=validation_generator,
-            validation_steps=800,
+            validation_steps=int(valid_samples/batch_size),
             callbacks=[
                 ModelCheckpoint(
                     'model.h5',
