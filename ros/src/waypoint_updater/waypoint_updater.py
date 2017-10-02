@@ -46,7 +46,8 @@ class WaypointUpdater(object):
         self.obstacle_wp = None
         self.seqnum = 0
         self.car_wp_q = -1
-        self.target_velocity = 20.0
+        self.target_mph = 40.0  # 10 for carla
+        self.target_velocity = self.target_mph / 2.24
         self.last_traffic_wp_processed = -1
 
         rospy.spin()
