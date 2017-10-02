@@ -22,23 +22,12 @@ class TLDetector(object):
         rospy.init_node('tl_detector')
 
         self.pose = None
+        self.prev_pose = None
         self.waypoints = None
         self.camera_image = None
         self.lights = []
         self.stop_lines = {}
 
-        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
-        '''
-        /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
-        helps you acquire an accurate ground truth data source for the traffic light
-        classifier by sending the current color state of all traffic lights in the
-        simulator. When testing on the vehicle, the color state will not be available. You'll need to
-        rely on the position of the light and the camera image to predict it.
-        '''
-        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
 
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
@@ -54,15 +43,41 @@ class TLDetector(object):
         self.last_wp = -1
         self.state_count = 0
 
+        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+
+        '''
+        /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
+        helps you acquire an accurate ground truth data source for the traffic light
+        classifier by sending the current color state of all traffic lights in the
+        simulator. When testing on the vehicle, the color state will not be available. You'll need to
+        rely on the position of the light and the camera image to predict it.
+        '''
+        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
+        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
+
         rospy.spin()
 
     def pose_cb(self, msg):
+        self.prev_pose = self.pose
         self.pose = msg
+
+    def car_moved(self):
+        rospy.loginfo('{} : {}'.format(self.prev_pose.pose.position, self.pose.pose.position))
+        if self.prev_pose is None and self.pose is not None:
+            return True
+        if self.prev_pose.pose.position.x != self.pose.pose.position.x:
+            return True
+        if self.prev_pose.pose.position.y != self.pose.pose.position.y:
+            return True
+        return False
 
     def waypoints_cb(self, waypoints):
         self.waypoints = waypoints
 
         # List of positions that correspond to the line to stop in front of for a given intersection
+        config_string = rospy.get_param("/traffic_light_config")
+        self.config = yaml.load(config_string)
         stop_line_positions = self.config['stop_line_positions']
 
         self.stop_lines = {}
@@ -169,8 +184,8 @@ class TLDetector(object):
 
             tl_point = self.listener.transformPoint("/base_link", tl_point)
 
-        except (tf.Exception, tf.LookupException, tf.ConnectivityException):
-            rospy.logerr("Failed to find camera to map transform")
+        except (tf.Exception, tf.LookupException, tf.ConnectivityException) as e:
+            rospy.logerr("Failed to find camera to map transform: {}".format(e))
             return None
 
         objectPoints = np.array([tl_point.point.y/tl_point.point.x, tl_point.point.z/tl_point.point.x, 1.0])
@@ -219,51 +234,55 @@ class TLDetector(object):
             self.prev_light_loc = None
             return False
 
-        xy = self.project_to_image_plane(light.pose.pose.position)
-        if xy is None:
-            return None
-        x, y = xy
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-
-        image_width = self.config['camera_info']['image_width']
-        image_height = self.config['camera_info']['image_height']
         crop_size = 299
-        half_crop = int(crop_size/2)
-        if x > image_width - half_crop:
-            x_min = image_width - crop_size
-            x_max = image_width
-        elif x < half_crop:
-            x_min = 0
-            x_max = crop_size
-        else:
-            x_min = max(0, x-half_crop)
-            x_max = min(x_min+crop_size, image_width)
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        xy = self.project_to_image_plane(light.pose.pose.position)
 
-        if y > image_height - half_crop:
-            y_min = image_height - crop_size
-            y_max = image_height
-        elif y < half_crop:
-            y_min = 0
-            y_max = crop_size
+        if xy is None:
+            cropped = cv2.resize(cv_image, (crop_size, crop_size))
         else:
-            y_min = max(0, y-half_crop)
-            y_max = min(y_min+crop_size, image_height)
+            x, y = xy
+            rospy.loginfo("light image loc: {}, {}".format(x, y))
+            image_width = self.config['camera_info']['image_width']
+            image_height = self.config['camera_info']['image_height']
 
-        cropped = cv_image[y_min:y_max, x_min:x_max]
+            half_crop = int(crop_size/2)
+            if x > image_width - half_crop:
+                x_min = image_width - crop_size
+                x_max = image_width
+            elif x < half_crop:
+                x_min = 0
+                x_max = crop_size
+            else:
+                x_min = max(0, x-half_crop)
+                x_max = min(x_min+crop_size, image_width)
+
+            if y > image_height - half_crop:
+                y_min = image_height - crop_size
+                y_max = image_height
+            elif y < half_crop:
+                y_min = 0
+                y_max = crop_size
+            else:
+                y_min = max(0, y-half_crop)
+                y_max = min(y_min+crop_size, image_height)
+
+            cropped = cv_image[y_min:y_max, x_min:x_max]
+
         pred = self.light_classifier.get_classification(cropped)
         rospy.loginfo("Predicted: {}".format(pred))
 
-
         if light.state != TrafficLight.UNKNOWN:
             # Ground truth is known, use it to create training data
-            filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
-            with open("light_classification/images.csv", "a") as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow([filename, light.state])
-            cv2.imwrite(filename, cropped)
-            rospy.loginfo("light image loc: {}, {}".format(x, y))
+            if self.car_moved():
+                filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
+                rospy.loginfo("Car moved, saving new image: {}".format(filename))
+                with open("light_classification/images.csv", "a") as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow([filename, light.state])
+                    cv2.imwrite(filename, cropped)
             rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
-
+            return light.state
         return pred
 
     def process_traffic_lights(self):
