@@ -223,8 +223,7 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        # TODO(Olala): return the real state
-        # Fake light detection with ground truth
+
         if not light:
             return TrafficLight.UNKNOWN
 
@@ -277,7 +276,7 @@ class TLDetector(object):
                 rospy.loginfo("Car moved, saving new image: {}".format(filename))
                 cv2.imwrite(filename, cropped)
             rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
-            return light.state
+
         return pred
 
     def process_traffic_lights(self):
