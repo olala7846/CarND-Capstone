@@ -15,6 +15,7 @@ import numpy as np
 import os
 
 STATE_COUNT_THRESHOLD = 3
+COLLECT_TRAINING_DATA = False
 
 class TLDetector(object):
     def __init__(self):
@@ -267,15 +268,14 @@ class TLDetector(object):
             cropped = cv_image[y_min:y_max, x_min:x_max]
 
         pred = self.light_classifier.get_classification(cropped)
-        rospy.loginfo("Predicted: {}".format(pred))
 
-        if light.state != TrafficLight.UNKNOWN:
+        rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
+
+        if light.state != TrafficLight.UNKNOWN and self.car_moved() and COLLECT_TRAINING_DATA:
             # Ground truth is known, use it to create training data
-            if self.car_moved():
-                filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
-                rospy.loginfo("Car moved, saving new image: {}".format(filename))
-                cv2.imwrite(filename, cropped)
-            rospy.loginfo("Truth: {}, Pred: {}".format(light.state, pred))
+            filename = os.path.abspath("light_classification/training_data/{}-{}.jpg".format(light.state, rospy.Time.now()))
+            rospy.loginfo("Car moved, saving new image: {}".format(filename))
+            cv2.imwrite(filename, cropped)
 
         return pred
 
