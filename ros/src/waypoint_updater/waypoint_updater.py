@@ -166,8 +166,14 @@ class WaypointUpdater(object):
     def waypoints_cb(self, waypoints):
         # Callback for /waypoints message.
         self.base_lane = waypoints
+        max_v = 0.0
         for idx in range(len(self.base_lane.waypoints)):
+            if self.base_lane.waypoints[idx].twist.twist.linear.x > max_v:
+                max_v = self.base_lane.waypoints[idx].twist.twist.linear.x
             self.set_waypoint_velocity(self.base_lane.waypoints, idx, self.target_velocity)
+        # limit speed to the range specified in waypoints
+        self.target_velocity = min(self.target_velocity, max_v)
+        rospy.loginfo("Target velocity set to %f", self.target_velocity)
 
     def traffic_cb(self, msg):
         # Callback for /traffic_waypoint message.
