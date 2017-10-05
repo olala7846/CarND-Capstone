@@ -210,7 +210,7 @@ class TLClassifier(object):
         if self.model is not None:
             im = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             im = im.astype('float32')
-            im = self.preprocess_input(im)
+            im = preprocess_input(im)
             im_array = np.asarray(im)
             transformed_im_array = im_array[None, :, :, :]
             with self.graph.as_default():
