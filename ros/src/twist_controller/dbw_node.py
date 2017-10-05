@@ -3,7 +3,8 @@
 import rospy
 from std_msgs.msg import Bool
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, PoseStamped
+from styx_msgs.msg import Lane, Waypoint
 import math
 
 from twist_controller import TwistController
@@ -62,13 +63,18 @@ class DBWNode(object):
         # TODO: Subscribe to all the topics you need to
         self.current_velocity_sub = rospy.Subscriber("/current_velocity", TwistStamped, self.current_velocity_callback)
         self.twist_cmd_sub = rospy.Subscriber("/twist_cmd", TwistStamped, self.twist_cmd_callback)
-        self.dbw_enabled_sub = rospy.Subscriber("/dbw_enabled", Bool, self.dbw_enabled_callback)
+        self.dbw_enabled_sub = rospy.Subscriber("/vehicle/dbw_enabled", Bool, self.dbw_enabled_callback)
+        
+        self.pose_sub = rospy.Subscriber('/current_pose', PoseStamped, self.pose_callback)
+        self.waypoint_sub = rospy.Subscriber('final_waypoints', Lane, self.waypoint_callback)
         
         #set up class variables to store data from subscribers
         self.current_velocity = 0.0     
         self.velocity_cmd = 0.0
         self.angular_velocity_cmd = 0.0
-        self.dbw_enabled = True
+        self.dbw_enabled = False
+        self.car_position = [0, 0, 0]
+        self.waypoint_position = [0, 0, 0]
         
         #set up timestamp for measuring actual cycle time
         self.time = rospy.get_time()
@@ -85,8 +91,19 @@ class DBWNode(object):
     
     
     def dbw_enabled_callback(self, data):
+        rospy.logwarn("dbw_enabled:{}".format(data))
         self.dbw_enabled = data
-
+        
+    def pose_callback(self, data):
+        self.car_position[0] = data.pose.position.x
+        self.car_position[1] = data.pose.position.y
+        self.car_position[2] = data.pose.position.z
+        
+    def waypoint_callback(self, data):
+        #get position of first waypoint ahead of car
+        self.waypoint_position[0] = data.waypoints[0].pose.pose.position.x
+        self.waypoint_position[1] = data.waypoints[0].pose.pose.position.y
+        self.waypoint_position[2] = data.waypoints[0].pose.pose.position.z
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
@@ -98,7 +115,17 @@ class DBWNode(object):
             # TODO: Get predicted throttle, brake, and steering using `twist_controller`
             # You should only publish the control commands if dbw is enabled
             
-            throttle, brake, steering = self.controller.control(self.velocity_cmd, self.current_velocity, self.angular_velocity_cmd, dt, self.dbw_enabled)
+            #calculate distance between car and next waypoint            
+            distance = math.sqrt( (self.waypoint_position[0] - self.car_position[0])**2 + (self.waypoint_position[1] - self.car_position[1])**2 + (self.waypoint_position[2] - self.car_position[2])**2)
+            
+            #calculate desired acceleration using equation vf^2 = vi^2 + 2*a*d
+            
+            if distance == 0:
+                acceleration = 0.0
+            else:
+                acceleration = (self.velocity_cmd**2 - self.current_velocity**2)/(2*distance)
+                       
+            throttle, brake, steering = self.controller.control(self.velocity_cmd, self.current_velocity, acceleration, self.angular_velocity_cmd, dt, self.dbw_enabled)
             if self.dbw_enabled:
                 self.publish(throttle, brake, steering)
             rate.sleep()

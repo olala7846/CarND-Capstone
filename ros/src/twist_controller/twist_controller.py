@@ -20,46 +20,39 @@ class TwistController(object):
         self.max_lat_accel = max_lat_accel
         self.max_steer_angle = max_steer_angle
         
-        #PID gain for throttle control
-        self.kp = 1
+        # PID gain for throttle control
+        self.kp = 10
         self.kd = 1
         self.ki = 0.1
         
-        #PID gain for brake control        
-        self.kp_brake = 1
-        self.kd_brake = 1
-        self.ki_brake = 0.1
-        
         self.min_speed = 0.0
         
-        self.pid_controller = PID(self.kp, self.ki, self.kd, 0, self.accel_limit)
-        
-        self.brake_controller = PID(self.kp_brake, self.ki_brake, self.kd_brake, 0, self.decel_limit)
+        self.pid_controller = PID(self.kp, self.ki, self.kd, 0.0, self.accel_limit)
+
+        # Braking F = ma --> 10m/s**2 max a
+        # self.nm_max = 10.0 * self.vehicle_mass * self.wheel_radius
         
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio, self.min_speed, self.max_lat_accel, self.max_steer_angle)
 
-        
-
-
-    def control(self, velocity_cmd, current_velocity, angular_velocity_cmd, dt, dbw_enabled):
+    def control(self, velocity_cmd, current_velocity, acceleration, angular_velocity_cmd, dt, dbw_enabled):
         
         if dbw_enabled:
             steer = self.yaw_controller.get_steering(velocity_cmd, angular_velocity_cmd, current_velocity)
-            if velocity_cmd > current_velocity:
+            # apply brakes if negative acceleration is above deadband, or if velocity_cmd is very small, else apply accelerator
+            if (acceleration >= 0) or ( (self.brake_deadband*-1.0 < acceleration < 0) and velocity_cmd > 0.5):
                 error = velocity_cmd - current_velocity
                 throttle = self.pid_controller.step(error, dt)
                 brake = 0.0
-                self.brake_controller.reset()
             else:
                 error = current_velocity - velocity_cmd
-                brake = self.brake_controller.step(error, dt)
+                brake = abs(acceleration) * self.vehicle_mass * self.wheel_radius
+                brake = max(brake, abs(self.decel_limit))
                 throttle = 0.0
                 self.pid_controller.reset()
         else:
             self.pid_controller.reset()
-            self.brake_controller.reset()
             throttle = 0.0
             brake = 0.0
             steer = 0.0
-        # TODO: Change the arg, kwarg list to suit your needs
+
         return throttle, brake, steer
