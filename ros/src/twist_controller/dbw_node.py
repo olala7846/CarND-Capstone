@@ -63,7 +63,7 @@ class DBWNode(object):
         # TODO: Subscribe to all the topics you need to
         self.current_velocity_sub = rospy.Subscriber("/current_velocity", TwistStamped, self.current_velocity_callback)
         self.twist_cmd_sub = rospy.Subscriber("/twist_cmd", TwistStamped, self.twist_cmd_callback)
-        self.dbw_enabled_sub = rospy.Subscriber("/dbw_enabled", Bool, self.dbw_enabled_callback)
+        self.dbw_enabled_sub = rospy.Subscriber("/vehicle/dbw_enabled", Bool, self.dbw_enabled_callback)
         
         self.pose_sub = rospy.Subscriber('/current_pose', PoseStamped, self.pose_callback)
         self.waypoint_sub = rospy.Subscriber('final_waypoints', Lane, self.waypoint_callback)
@@ -72,7 +72,7 @@ class DBWNode(object):
         self.current_velocity = 0.0     
         self.velocity_cmd = 0.0
         self.angular_velocity_cmd = 0.0
-        self.dbw_enabled = True
+        self.dbw_enabled = False
         self.car_position = [0, 0, 0]
         self.waypoint_position = [0, 0, 0]
         
@@ -91,6 +91,7 @@ class DBWNode(object):
     
     
     def dbw_enabled_callback(self, data):
+        rospy.logwarn("dbw_enabled:{}".format(data))
         self.dbw_enabled = data
         
     def pose_callback(self, data):
