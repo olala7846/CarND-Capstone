@@ -152,14 +152,19 @@ def train_site():
     model = create_model(4)
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
     train_datagen = ImageDataGenerator(
-        preprocessing_function=preprocess_input)
+        preprocessing_function=preprocess_input,
+        rotation_range=5,
+        width_shift_range=.1,
+        height_shift_range=.1,
+        zoom_range=.05,
+        horizontal_flip=True)
 
     batch_size = 16
     train_generator = train_datagen.flow_from_directory(
             'src/tl_detector/light_classification/site_training_data',
             target_size=(IMG_WIDTH, IMG_HEIGHT),
             batch_size=batch_size,
-            save_to_dir='src/tl_detector/light_classification/aug',
+#            save_to_dir='src/tl_detector/light_classification/aug',
             class_mode='categorical')
 
     train_samples = 191
