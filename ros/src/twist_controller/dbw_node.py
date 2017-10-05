@@ -125,8 +125,6 @@ class DBWNode(object):
             else:
                 acceleration = (self.velocity_cmd**2 - self.current_velocity**2)/(2*distance)
                        
-            
-            
             throttle, brake, steering = self.controller.control(self.velocity_cmd, self.current_velocity, acceleration, self.angular_velocity_cmd, dt, self.dbw_enabled)
             if self.dbw_enabled:
                 self.publish(throttle, brake, steering)

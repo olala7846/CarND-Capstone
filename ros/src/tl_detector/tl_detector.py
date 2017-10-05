@@ -239,7 +239,7 @@ class TLDetector(object):
             self.prev_light_loc = None
             return False
 
-        crop_size = 299
+        crop_size = self.light_classifier.crop_size
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
         if self.is_site:

@@ -31,6 +31,23 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        self.is_site = rospy.get_param("/launch") == "site"
+
+        # Add other member variables you need below
+        self.base_lane = None
+        self.traffic_wp = -1
+        self.obstacle_wp = None
+        self.seqnum = 0
+        self.car_wp_q = -1
+
+        self.target_mph = 40.0
+        if self.is_site:
+            # 10 for carla
+            self.target_mph = 10.0
+
+        self.target_velocity = self.target_mph / 2.24
+        self.last_traffic_wp_processed = -1
+
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
@@ -39,16 +56,6 @@ class WaypointUpdater(object):
         rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # Add other member variables you need below
-        self.base_lane = None
-        self.traffic_wp = -1
-        self.obstacle_wp = None
-        self.seqnum = 0
-        self.car_wp_q = -1
-        self.target_mph = 40.0  # 10 for carla
-        self.target_velocity = self.target_mph / 2.24
-        self.last_traffic_wp_processed = -1
 
         rospy.spin()
 
@@ -158,10 +165,6 @@ class WaypointUpdater(object):
                 l.header.stamp = rospy.get_rostime()
                 l.waypoints = pub_waypoints
                 self.final_waypoints_pub.publish(l)
-                            
-#            rospy.loginfo("wp_start %d min_dist %f wp.x %f pose.x %f veh_yaw %f",
- #                         wp_start, min_dist, self.base_lane.waypoints[wp_start].pose.pose.position.x,
-  #                        msg.pose.position.x, veh_yaw)
 
     def waypoints_cb(self, waypoints):
         # Callback for /waypoints message.
@@ -171,6 +174,7 @@ class WaypointUpdater(object):
             if self.base_lane.waypoints[idx].twist.twist.linear.x > max_v:
                 max_v = self.base_lane.waypoints[idx].twist.twist.linear.x
             self.set_waypoint_velocity(self.base_lane.waypoints, idx, self.target_velocity)
+
         # limit speed to the range specified in waypoints
         self.target_velocity = min(self.target_velocity, max_v)
         rospy.loginfo("Target velocity set to %f", self.target_velocity)

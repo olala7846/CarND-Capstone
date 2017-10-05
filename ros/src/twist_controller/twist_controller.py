@@ -20,30 +20,25 @@ class TwistController(object):
         self.max_lat_accel = max_lat_accel
         self.max_steer_angle = max_steer_angle
         
-        #PID gain for throttle control
+        # PID gain for throttle control
         self.kp = 10
         self.kd = 1
         self.ki = 0.1
-        
         
         self.min_speed = 0.0
         
         self.pid_controller = PID(self.kp, self.ki, self.kd, 0.0, self.accel_limit)
 
         # Braking F = ma --> 10m/s**2 max a
-        #self.nm_max = 10.0 * self.vehicle_mass * self.wheel_radius
-        
+        # self.nm_max = 10.0 * self.vehicle_mass * self.wheel_radius
         
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio, self.min_speed, self.max_lat_accel, self.max_steer_angle)
-
-        
-
 
     def control(self, velocity_cmd, current_velocity, acceleration, angular_velocity_cmd, dt, dbw_enabled):
         
         if dbw_enabled:
             steer = self.yaw_controller.get_steering(velocity_cmd, angular_velocity_cmd, current_velocity)
-            #apply brakes if negative acceleration is above deadband, or if velocity_cmd is very small, else apply accelerator
+            # apply brakes if negative acceleration is above deadband, or if velocity_cmd is very small, else apply accelerator
             if (acceleration >= 0) or ( (self.brake_deadband*-1.0 < acceleration < 0) and velocity_cmd > 0.5):
                 error = velocity_cmd - current_velocity
                 throttle = self.pid_controller.step(error, dt)
@@ -59,5 +54,5 @@ class TwistController(object):
             throttle = 0.0
             brake = 0.0
             steer = 0.0
-        # TODO: Change the arg, kwarg list to suit your needs
+
         return throttle, brake, steer

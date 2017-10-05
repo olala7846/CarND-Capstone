@@ -1,19 +1,11 @@
 from styx_msgs.msg import TrafficLight
 
-from keras.preprocessing.image import ImageDataGenerator
-from keras.models import Model
-from keras.models import model_from_json
 from keras import backend as K
 from keras.callbacks import ModelCheckpoint
-from keras.models import Sequential, load_model
+from keras.models import Model, Sequential, load_model
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Activation, Dropout, Flatten, Dense
-from keras.layers import Dense, GlobalAveragePooling2D
-from keras.optimizers import SGD
-from keras.applications.xception import Xception
-from keras.preprocessing import image
-
-from keras.layers import Dense, GlobalAveragePooling2D
+from keras.preprocessing.image import ImageDataGenerator
 
 import rospy
 import cv2
@@ -188,6 +180,7 @@ def train_site():
 class TLClassifier(object):
     def __init__(self):
         self.model = None
+        self.crop_size = IMG_WIDTH
 
         if rospy.get_param('/launch') == 'styx':
             model_file = 'model.h5'
