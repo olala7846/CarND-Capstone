@@ -29,9 +29,10 @@ class TLDetector(object):
         self.lights = []
         self.stop_lines = {}
 
-
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
+
+        self.is_site = rospy.get_param("/launch") == "site"
 
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
@@ -240,38 +241,44 @@ class TLDetector(object):
 
         crop_size = 299
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-        xy = self.project_to_image_plane(light.pose.pose.position)
 
-        if xy is None:
-            cropped = cv2.resize(cv_image, (crop_size, crop_size))
+        if self.is_site:
+            # remove hood and upper unused sections
+            cropped = cv_image[280:750, :, :]
+            cropped = cv2.resize(cropped, (crop_size, crop_size))
         else:
-            x, y = xy
-            rospy.loginfo("light image loc: {}, {}".format(x, y))
-            image_width = self.config['camera_info']['image_width']
-            image_height = self.config['camera_info']['image_height']
+            xy = self.project_to_image_plane(light.pose.pose.position)
 
-            half_crop = int(crop_size/2)
-            if x > image_width - half_crop:
-                x_min = image_width - crop_size
-                x_max = image_width
-            elif x < half_crop:
-                x_min = 0
-                x_max = crop_size
+            if xy is None:
+                cropped = cv2.resize(cv_image, (crop_size, crop_size))
             else:
-                x_min = max(0, x-half_crop)
-                x_max = min(x_min+crop_size, image_width)
+                x, y = xy
+                rospy.loginfo("light image loc: {}, {}".format(x, y))
+                image_width = self.config['camera_info']['image_width']
+                image_height = self.config['camera_info']['image_height']
 
-            if y > image_height - half_crop:
-                y_min = image_height - crop_size
-                y_max = image_height
-            elif y < half_crop:
-                y_min = 0
-                y_max = crop_size
-            else:
-                y_min = max(0, y-half_crop)
-                y_max = min(y_min+crop_size, image_height)
+                half_crop = int(crop_size/2)
+                if x > image_width - half_crop:
+                    x_min = image_width - crop_size
+                    x_max = image_width
+                elif x < half_crop:
+                    x_min = 0
+                    x_max = crop_size
+                else:
+                    x_min = max(0, x-half_crop)
+                    x_max = min(x_min+crop_size, image_width)
 
-            cropped = cv_image[y_min:y_max, x_min:x_max]
+                if y > image_height - half_crop:
+                    y_min = image_height - crop_size
+                    y_max = image_height
+                elif y < half_crop:
+                    y_min = 0
+                    y_max = crop_size
+                else:
+                    y_min = max(0, y-half_crop)
+                    y_max = min(y_min+crop_size, image_height)
+
+                cropped = cv_image[y_min:y_max, x_min:x_max]
 
         pred = self.light_classifier.get_classification(cropped)
 
