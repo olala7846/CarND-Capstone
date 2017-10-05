@@ -16,6 +16,7 @@ import os
 
 STATE_COUNT_THRESHOLD = 3
 COLLECT_TRAINING_DATA = False
+EXTRACT_SITE_IMAGES = False
 
 class TLDetector(object):
     def __init__(self):
@@ -100,6 +101,11 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
+        if EXTRACT_SITE_IMAGES:
+            cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+            filename = os.path.abspath("light_classification/site_training_data/4-{}.jpg".format(rospy.Time.now()))
+            cv2.imwrite(filename, cv_image)
+
         light_wp, state = self.process_traffic_lights()
 
         '''
@@ -298,7 +304,7 @@ class TLDetector(object):
         closest_wp_index = None
         waypoints = self.waypoints.waypoints
         wp_length = len(waypoints)
-        if(self.pose):
+        if self.pose:
             car_orientation = self.pose.pose.orientation
             quaternion = (car_orientation.x, car_orientation.y,
                           car_orientation.z, car_orientation.w)
@@ -333,7 +339,7 @@ class TLDetector(object):
 
         if light:
             state = TrafficLight.UNKNOWN
-            if abs(light_wp - closest_wp_index) < 200:
+            if abs(light_wp - closest_wp_index) < 50:
                 state = self.get_light_state(light)
             return light_wp, state
         self.waypoints = None
