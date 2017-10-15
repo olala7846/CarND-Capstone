@@ -13,3 +13,4 @@ training_data
 /ros/src/tl_detector/light_classification/light_classification.zip
 /ros/just_traffic_light.bag
 /ros/loop_with_traffic_light.bag
+*.bag
