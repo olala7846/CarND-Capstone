@@ -11,4 +11,5 @@ docker run --rm -it \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v $PWD:/capstone/ \
   -v /tmp/log:/root/.ros/ \
+  -p 127.0.0.1:4567:4567 \
   capstone
