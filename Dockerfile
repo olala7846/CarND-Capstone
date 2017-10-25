@@ -1,5 +1,5 @@
 # Udacity capstone project dockerfile
-FROM ros:kinetic-robot
+FROM osrf/ros:kinetic-desktop-full-xenial
 LABEL maintainer="olala7846@gmail.com"
 
 # Install Dataspeed DBW https://goo.gl/KFSYi1 from binary
