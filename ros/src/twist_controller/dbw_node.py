@@ -3,10 +3,11 @@
 import rospy
 from std_msgs.msg import Bool
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, PoseStamped
+from styx_msgs.msg import Lane, Waypoint
 import math
 
-from twist_controller import Controller
+from twist_controller import TwistController
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -45,6 +46,7 @@ class DBWNode(object):
         steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+        
 
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
@@ -52,26 +54,80 @@ class DBWNode(object):
                                             ThrottleCmd, queue_size=1)
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
+                                         
+                                    
 
         # TODO: Create `TwistController` object
-        # self.controller = TwistController(<Arguments you wish to provide>)
+        self.controller = TwistController(vehicle_mass, brake_deadband, decel_limit, accel_limit, wheel_radius, wheel_base, steer_ratio, max_lat_accel, max_steer_angle)
 
         # TODO: Subscribe to all the topics you need to
-
+        self.current_velocity_sub = rospy.Subscriber("/current_velocity", TwistStamped, self.current_velocity_callback)
+        self.twist_cmd_sub = rospy.Subscriber("/twist_cmd", TwistStamped, self.twist_cmd_callback)
+        self.dbw_enabled_sub = rospy.Subscriber("/vehicle/dbw_enabled", Bool, self.dbw_enabled_callback)
+        
+        self.pose_sub = rospy.Subscriber('/current_pose', PoseStamped, self.pose_callback)
+        self.waypoint_sub = rospy.Subscriber('final_waypoints', Lane, self.waypoint_callback)
+        
+        #set up class variables to store data from subscribers
+        self.current_velocity = 0.0     
+        self.velocity_cmd = 0.0
+        self.angular_velocity_cmd = 0.0
+        self.dbw_enabled = False
+        self.car_position = [0, 0, 0]
+        self.waypoint_position = [0, 0, 0]
+        
+        #set up timestamp for measuring actual cycle time
+        self.time = rospy.get_time()
+        
         self.loop()
+        
+    def current_velocity_callback(self, data):
+        self.current_velocity = data.twist.linear.x
+    
+    
+    def twist_cmd_callback(self, data):
+        self.velocity_cmd = data.twist.linear.x
+        self.angular_velocity_cmd = data.twist.angular.z
+    
+    
+    def dbw_enabled_callback(self, data):
+        rospy.logwarn("dbw_enabled:{}".format(data))
+        self.dbw_enabled = data
+        
+    def pose_callback(self, data):
+        self.car_position[0] = data.pose.position.x
+        self.car_position[1] = data.pose.position.y
+        self.car_position[2] = data.pose.position.z
+        
+    def waypoint_callback(self, data):
+        #get position of first waypoint ahead of car
+        self.waypoint_position[0] = data.waypoints[0].pose.pose.position.x
+        self.waypoint_position[1] = data.waypoints[0].pose.pose.position.y
+        self.waypoint_position[2] = data.waypoints[0].pose.pose.position.z
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
+            
+            new_time = rospy.get_time()
+            dt = new_time - self.time
+            self.time = new_time
             # TODO: Get predicted throttle, brake, and steering using `twist_controller`
             # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
+            
+            #calculate distance between car and next waypoint            
+            distance = math.sqrt( (self.waypoint_position[0] - self.car_position[0])**2 + (self.waypoint_position[1] - self.car_position[1])**2 + (self.waypoint_position[2] - self.car_position[2])**2)
+            
+            #calculate desired acceleration using equation vf^2 = vi^2 + 2*a*d
+            
+            if distance == 0:
+                acceleration = 0.0
+            else:
+                acceleration = (self.velocity_cmd**2 - self.current_velocity**2)/(2*distance)
+                       
+            throttle, brake, steering = self.controller.control(self.velocity_cmd, self.current_velocity, acceleration, self.angular_velocity_cmd, dt, self.dbw_enabled)
+            if self.dbw_enabled:
+                self.publish(throttle, brake, steering)
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
